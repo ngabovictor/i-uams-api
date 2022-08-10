@@ -1,0 +1,21 @@
+# Generated via Nexin django powered rest API template
+# Remember to add more environment variables to be used
+
+[settings]
+DEBUG=True
+ALLOWED_HOSTS=*
+CORS_ORIGIN_WHITELIST=
+DATABASE_URL=
+
+# AWS VARIABLES
+
+
+# CELERY VARIABLES
+
+REDIS_URL=redis://localhost:6379
+
+
+
+# HEROKU
+# Change to True when deploying to heroku server
+USE_HEROKU=False
