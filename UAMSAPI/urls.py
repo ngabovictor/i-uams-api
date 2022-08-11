@@ -29,14 +29,15 @@ schema_view = get_schema_view(
       description="User Account Management System API",
       contact=openapi.Contact(email="nvichack@gmail.com")
    ),
-   public=False,
-   permission_classes=(permissions.IsAdminUser,),
+   public=True,
+   permission_classes=[permissions.AllowAny],
 )
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('rest-auth/', include("rest_framework.urls")),
     path('api-documentation', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    path('', include("users.urls")),
 ]
 
 if settings.DEBUG:

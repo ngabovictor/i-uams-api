@@ -47,9 +47,9 @@ INSTALLED_APPS = [
     
     'django_celery_beat',
     'phonenumber_field',
-    'rest_framework.authtoken'
     'django_countries',
-    'users'
+    'users',
+    'notifications'
     
 ]
 
@@ -170,8 +170,7 @@ REST_FRAMEWORK = {
 }
 
 
-# Ucomment the next line if you have custom User model
-# AUTH_USER_MODEL = 'app.Model'
+AUTH_USER_MODEL = 'users.User'
 
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend'
