@@ -39,6 +39,8 @@ class User(AbstractUser):
         ('VERIFIED', 'VERIFIED')
     ]
     verification_status = models.CharField(max_length=30, choices=verification_statuses, default="UNVERIFIED")
+    nid_number = models.CharField(max_length=30, null=True, blank=True)
+    nid_document = models.ImageField(upload_to="nid_documents", null=True, blank=True)
 
     USERNAME_FIELD = 'phone_number'
 

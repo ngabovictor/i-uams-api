@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     
     'django_celery_beat',
     'phonenumber_field',
+    'rest_framework.authtoken'
     'django_countries',
     'users'
     

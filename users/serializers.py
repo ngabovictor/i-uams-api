@@ -17,60 +17,21 @@ class UserMiniSerializer(ModelSerializer):
             "id",
             "first_name",
             "last_name",
-            "email",
-            "country_code",
             "phone_number",
-            "unique_number",
+            "email",
+            "nationality",
             "is_active",
-            "groups",
+            "is_staff",
+            "birthdate",
+            "marital_status",
+            "gender",
+            "verification_status",
+            "profile_photo"
         ]
+        read_only_fields = ['is_active', 'is_staff', 'verification_status']
 
     def to_representation(self, instance):
         serialized_data = super(UserMiniSerializer, self).to_representation(instance)
-        serialized_data['id'] = str(instance.id)
-        serialized_data["has_password"] = instance.has_usable_password()
-        groups_set = instance.groups.all()
-        groups = []
-
-        for g in groups_set:
-            groups.append(g.name)
-        serialized_data["groups"] = groups
-        return serialized_data
-
-
-class UserSerializer(ModelSerializer):
-
-    class Meta:
-        model = User
-        fields = [
-            "id",
-            "first_name",
-            "last_name",
-            "email",
-            "country_code",
-            "phone_number",
-            "unique_number",
-            "is_active",
-            "is_staff"
-        ]
-
-    def to_representation(self, instance):
-        serialized_data = super(UserSerializer, self).to_representation(instance)
-        serialized_data['id'] = str(instance.id)
-        serialized_data["has_password"] = instance.has_usable_password()
-        groups_set = instance.groups.all()
-        groups = []
-
-        for g in groups_set:
-            groups.append(g.name)
-        serialized_data["groups"] = groups
-
-        perms_set = instance.user_permissions.all()
-        perms = []
-
-        for p in perms_set:
-            perms.append(p.codename)
-        serialized_data["user_permissions"] = perms
         return serialized_data
 
 
