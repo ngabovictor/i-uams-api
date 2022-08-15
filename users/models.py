@@ -16,6 +16,7 @@ class User(AbstractUser):
     phone_number = PhoneNumberField(unique=True)
     username = models.CharField(null=True, blank=True, max_length=30, editable=False)
     email = models.EmailField(null=True, blank=True)
+    is_email_verified = models.BooleanField(default=False)
     nationality = CountryField(null=True, blank=True)
     birthdate = models.DateField(null=True, blank=True)
     marital_statuses = [

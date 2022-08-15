@@ -1,6 +1,10 @@
+from django.contrib.auth import logout
+from django.contrib.auth.password_validation import validate_password, password_changed
+from django.core.exceptions import ValidationError
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
+from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ViewSet
@@ -21,13 +25,13 @@ class UserListViewset(GenericAPIView, ListModelMixin):
     permission_classes = [IsAuthenticated]
     queryset = User.objects.none()
     filter_fields = (
-    "id", "email", "phone_number", "nationality", "marital_status", "gender", "verification_status", "is_active",
-    "is_staff")
+        "id", "email", "phone_number", "nationality", "marital_status", "gender", "verification_status", "is_active",
+        "is_staff")
     search_fields = (
-    "id", "first_name", "last_name", "email", "phone_number", "nationality", "marital_status", "gender",
-    "verification_status")
+        "id", "first_name", "last_name", "email", "phone_number", "nationality", "marital_status", "gender",
+        "verification_status")
     ordering_fields = (
-    "date_joined", "first_name", "last_name", "birthdate", "nationality", "gender", "verification_status")
+        "date_joined", "first_name", "last_name", "birthdate", "nationality", "gender", "verification_status")
 
     def get_queryset(self):
         if self.request.user.is_staff:
@@ -54,8 +58,136 @@ class UserDetailViewset(GenericAPIView, RetrieveModelMixin, UpdateModelMixin):
     def patch(self, request, *args, **kwargs):
         return self.partial_update(request, *args, **kwargs)
 
-    def put(self, request, *args, **kwargs):
-        return self.update(request, *args, **kwargs)
+
+class VerificationsViewset(ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['post'], url_path="upload-verification-documents", name='upload-verification-documents')
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'nid_document': openapi.Schema(type=openapi.TYPE_FILE, description='National ID image'),
+                'nid_number': openapi.Schema(type=openapi.TYPE_STRING, description='National ID number'),
+            },
+            required=['nid_document', 'nid_number']
+        ),
+        responses={
+            status.HTTP_200_OK: openapi.Response(
+                description="Data uploaded successfully",
+                examples={
+                    "application/json": {
+                        "detail": "The verification in underway"
+                    }
+                }
+            ),
+            status.HTTP_400_BAD_REQUEST: openapi.Response(
+                description="Account/verification code exception",
+                examples={
+                    "application/json": {
+                        "detail": "National ID or National ID image is not provided | The user account status is VERIFIED"
+                    },
+                }
+            ),
+        })
+    def upload_verification_data(self, request):
+        """
+        Upload account verification data
+        """
+        nid_document = request.data.get('nid_document')
+        nid = request.data.get('nid_number')
+
+        if not nid_document or not nid:
+            return Response({"detail": "National ID or National ID image is not provided"}, status=400)
+
+        if not request.user.is_active:
+            return Response({"detail": "The account is not active"}, status=400)
+
+        if request.user.verification_status == "VERIFIED" or request.user.verification_status == "PENDING VERIFICATION":
+            return Response({"detail": f"The user account status is {request.user.verification_status}"}, status=400)
+
+        user = request.user
+
+        user.nid_document = nid_document
+        user.nid_number = nid
+        user.verification_status = "PENDING VERIFICATION"
+        user.save()
+
+        return Response({"detail": "The verification in underway"}, status=200)
+
+    @action(detail=False, methods=['post'], url_path="verify-account", name='verify-account')
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'user': openapi.Schema(type=openapi.TYPE_STRING, description='User ID'),
+                'status': openapi.Schema(type=openapi.TYPE_STRING, description='Verification status'),
+            },
+            required=['user', 'status']
+        ),
+        responses={
+            status.HTTP_200_OK: openapi.Response(
+                description="Account verification is updated",
+                examples={
+                    "application/json": {
+                        "detail": "Account verification is updated"
+                    }
+                }
+            ),
+            status.HTTP_403_FORBIDDEN: openapi.Response(
+                description="Account/verification is failed",
+                examples={
+                    "application/json": {
+                        "detail": "You don't have permissions to perform this operation"
+                    },
+                }
+            ),
+            status.HTTP_400_BAD_REQUEST: openapi.Response(
+                description="Account/verification code exception",
+                examples={
+                    "application/json": {
+                        "detail": "Account with the id is not found | Verification status is not provided"
+                    },
+                }
+            ),
+        })
+    def verify_account(self, request):
+        """
+        Verify account
+        """
+        if not request.user.is_staff:
+            return Response({"detail": "You don't have permissions to perform this operation"}, status=403)
+
+        user_id = request.data.get("user")
+
+        user = User.objects.filter(id=user_id, is_active=True, verification_status="PENDING VERIFICATION").first()
+
+        if not user:
+            return Response({"detail": "Account with the id is not found"}, status=400)
+
+        status = request.data.get("verification_status")
+
+        if not status:
+            return Response({"detail": "Verification status is not provided"}, status=400)
+
+        accepted_statues = ("NOT VERIFIED", "VERIFIED")
+
+        if status not in accepted_statues:
+            return Response({"detail": "Invalid status is provided"}, status=400)
+
+        user.verification_status = status
+        user.save()
+
+        """
+        Notify user about the verification status
+        """
+        if user.email:
+            subject = "Account verification status"
+            message = f"<p>Your account verification status has been changed to {status}</p>"
+            emails = [user.email]
+            send_email_task.delay(emails=emails, subject=subject, message=message)
+
+        return Response({"detail": "Account has been verified"}, status=200)
 
 
 class AuthenticationViewset(ViewSet):
@@ -97,6 +229,9 @@ class AuthenticationViewset(ViewSet):
             ),
         })
     def request_verification_code(self, request):
+        """
+        Request an OTP code for various uses
+        """
         username = request.data.get("username")
 
         filter_params = {}
@@ -113,9 +248,6 @@ class AuthenticationViewset(ViewSet):
 
         if not bool(filter_params):
             return Response({"detail": "Valid email or phone number is not supplied"}, status=400)
-
-        if request.data.get("country_code"):
-            filter_params["country_code"] = request.data.get("country_code")
 
         user = User.objects.filter(**filter_params).first()
 
@@ -152,3 +284,319 @@ class AuthenticationViewset(ViewSet):
         return Response(
             {"detail": "Verification code has been sent to {username}.".format(username=username)},
             status=200)
+
+    @action(detail=False, methods=['post'], url_path="verify-authentication", name='verify-authentication')
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'username': openapi.Schema(type=openapi.TYPE_STRING, description='Email or phone number'),
+                'code': openapi.Schema(type=openapi.TYPE_STRING, description='Verification code'),
+            },
+            required=['username', 'code']
+        ),
+        responses={
+            status.HTTP_200_OK: openapi.Response(
+                description="Verification code has been verified",
+                examples={
+                    "application/json": {
+                        "detail": "Verification is approved. Please continue login"
+                    }
+                }
+            ),
+            status.HTTP_400_BAD_REQUEST: openapi.Response(
+                description="Account/verification code exception",
+                examples={
+                    "application/json": {
+                        "detail": "No account found | The account is not active | This account must reset password "
+                                  "before login | Invalid verification code"
+                    },
+                }
+            ),
+        })
+    def verify_authentication(self, request):
+
+        """
+        Login with username and OTP code
+        """
+
+        code = request.data.get("code")
+        username = request.data.get("username")
+
+        if not username:
+            username = request.data.get("phone_number")
+        if not username:
+            username = request.data.get("email")
+
+        filter_params = {}
+
+        if is_username_phone_number(username=username):
+            filter_params = {
+                "phone_number": username
+            }
+
+        elif is_username_email(username=username):
+            filter_params = {
+                "email": username
+            }
+
+        if not bool(filter_params):
+            return Response({"detail": "Valid email or phone number is not supplied"}, status=400)
+
+        user = User.objects.filter(**filter_params).first()
+
+        if not user:
+            return Response({"detail": "No account found"}, status=400)
+        if not user.is_active:
+            return Response({"detail": "The account is not active"}, status=400)
+
+        verification = Verification.objects.filter(code=code, is_valid=True, is_used=False, user=user).first()
+
+        if not verification:
+            return Response({"detail": "Invalid verification code"}, status=400)
+
+        context = {
+            "request": request
+        }
+
+        data = UserMiniSerializer(user, context=context).data
+
+        token, _ = Token.objects.get_or_create(
+            user=user
+        )
+        data["token"] = token.key
+
+        verification.is_valid = False
+        verification.is_used = True
+        verification.save()
+        return Response(data, status=200)
+
+    @action(detail=False, methods=['post'], url_path="verify-change-password", name='verify-change-password')
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'username': openapi.Schema(type=openapi.TYPE_STRING, description='Email or phone number'),
+                'code': openapi.Schema(type=openapi.TYPE_STRING, description='Verification code'),
+                'password': openapi.Schema(type=openapi.TYPE_STRING, description='Password'),
+            },
+            required=['username', 'code', 'password']
+        ),
+        responses={
+            status.HTTP_200_OK: openapi.Response(
+                description="Verification code has been verified",
+                examples={
+                    "application/json": {
+                        "detail": "Verification is approved. Please continue login"
+                    }
+                }
+            ),
+            status.HTTP_400_BAD_REQUEST: openapi.Response(
+                description="Account/verification code exception",
+                examples={
+                    "application/json": {
+                        "detail": "No account found | The account is not active | This account must reset password "
+                                  "before login | Invalid verification code"
+                    },
+                }
+            ),
+        })
+    def verify_change_password(self, request):
+
+        """
+        Change password with OTP
+        """
+
+        code = request.data.get("code")
+        username = request.data.get("username")
+        password = request.data.get("password")
+
+        filter_params = {}
+
+        if is_username_phone_number(username=username):
+            filter_params = {
+                "phone_number": username
+            }
+
+        elif is_username_email(username=username):
+            filter_params = {
+                "email": username
+            }
+
+        if not bool(filter_params):
+            return Response({"detail": "Valid email or phone number is not supplied"}, status=400)
+
+        user = User.objects.filter(**filter_params).first()
+
+        if not user:
+            return Response({"detail": "No account found"}, status=400)
+        if not user.is_active:
+            return Response({"detail": "The account is not active"}, status=400)
+
+        if not password:
+            return Response({"detail": "Password not provided"}, status=400)
+
+        verification = Verification.objects.filter(code=code, is_valid=True, is_used=False, user=user).first()
+
+        if not verification:
+            return Response({"detail": "Invalid verification code"}, status=400)
+
+        """
+        Validate password
+        """
+
+        try:
+            validate_password(password=password, user=user)
+        except ValidationError as e:
+            return Response({"detail": str(e)}, status)
+
+        context = {
+            "request": request
+        }
+        user.set_password(password)
+        user.save()
+
+        password_changed(password, user)
+
+        data = UserMiniSerializer(user, context=context).data
+
+        verification.is_valid = False
+        verification.is_used = True
+        verification.save()
+        return Response(data, status=200)
+
+    @action(detail=False, methods=['post'], url_path="generate-magic-link", name='generate-magic-link')
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'email': openapi.Schema(type=openapi.TYPE_STRING, description='Email'),
+            },
+            required=['email']
+        ),
+        responses={
+            status.HTTP_200_OK: openapi.Response(
+                description="Login link generated successfully",
+                examples={
+                    "application/json": {
+                        "detail": "Login link has been sent to the email address"
+                    }
+                }
+            ),
+            status.HTTP_400_BAD_REQUEST: openapi.Response(
+                description="Account/verification code exception",
+                examples={
+                    "application/json": {
+                        "detail": "No account found | The account is not active | This account must reset password "
+                                  "before login | Invalid email code"
+                    },
+                }
+            ),
+        })
+    def generate_magic_link(self, request):
+        """
+        Generates login link and send it to verified email
+        """
+
+        email = request.data.get("email")
+
+        if not email or is_username_email(email):
+            return Response({"detail": "Invalid email address"}, status=400)
+
+        user = User.objects.filter(email=email).first()
+
+        if not user:
+            return Response({"detail": "Account with the email is not found"}, status=400)
+
+        if not user.is_active:
+            return Response(
+                {"detail": "The account with the email address is not active. Activate your account to continue"},
+                status=400)
+
+        if not user.is_email_verified:
+            return Response(
+                {"detail": "The email address is not verified. Use other login methods and verify your account first"},
+                status=400)
+
+        verification = Verification(user=user, is_valid=True, is_used=False)
+        verification.save()
+
+        """
+        Send login link
+        
+        """
+
+        link = f"http://localhost:8000/auth/login-with-magic-link?login_id={verification.id}"
+
+        subject = "UAMS Authentication"
+        message = f"<p>Please click this link to login: <a href=\"{link}\">{link}</a></p>"
+        emails = [email]
+
+        send_email_task.delay(emails=emails, subject=subject, message=message)
+
+        return Response({"detail": "Login link has been sent to the email address"}, status=200)
+
+    @action(detail=False, methods=['get'], url_path="login-with-magic-link", name='login-with-magic-link')
+    @swagger_auto_schema(
+        responses={
+            status.HTTP_200_OK: openapi.Response(
+                description="Login is successful",
+                examples={
+                    "application/json": {
+                        "detail": "Login is successful"
+                    }
+                }
+            ),
+            status.HTTP_400_BAD_REQUEST: openapi.Response(
+                description="Account/verification code exception",
+                examples={
+                    "application/json": {
+                        "detail": "No account found | The account is not active | This account must reset password "
+                                  "before login | Invalid email code"
+                    },
+                }
+            ),
+        })
+    def signin_with_magic_link(self, request):
+        """
+        Authenticate with login link
+        """
+        verification_id = request.query_params.get("login_id")
+        verification = Verification.objects.filter(id=verification_id, is_used=False, is_valid=True).first()
+
+        if not verification:
+            return Response({"detail": "The login link is invalid"}, status=400)
+
+        user = verification.user
+
+        if not user.is_active:
+            return Response({"detail": "The account is not active. Please activate your account and try again"},
+                            status=400)
+
+        token, _ = Token.objects.get_or_create(user=user)
+
+        context = {
+            "request": request
+        }
+        data = UserMiniSerializer(instance=user, context=context).data
+        data['token'] = token.key
+        return Response(data, status=200)
+
+    @action(detail=False, methods=['get'], url_path="logout", name='logout')
+    @swagger_auto_schema(
+        responses={
+            status.HTTP_200_OK: openapi.Response(
+                description="Successfully signed out",
+                examples={
+                    "application/json": {
+                        "detail": "Signed out"
+                    }
+                }
+            )
+        })
+    def signout(self, request):
+        if request.user.is_anonymous:
+            return Response({"detail": "You are not allowed to perform this operation"}, status=401)
+        Token.objects.filter(user=request.user).delete()
+        logout(request)
+        return Response({"detail": "Signed out"}, status=200)
