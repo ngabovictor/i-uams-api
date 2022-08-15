@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'django_filters',
+    'django_advanced_password_validation',
     
     'django_celery_beat',
     'phonenumber_field',
@@ -118,6 +119,30 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
+    {
+        'NAME': 'django_advanced_password_validation.advanced_password_validation.ContainsDigitsValidator',
+        'OPTIONS': {
+            'min_digits': 1
+        }
+    },
+    {
+        'NAME': 'django_advanced_password_validation.advanced_password_validation.ContainsUppercaseValidator',
+        'OPTIONS': {
+            'min_uppercase': 1
+        }
+    },
+    {
+        'NAME': 'django_advanced_password_validation.advanced_password_validation.ContainsLowercaseValidator',
+        'OPTIONS': {
+            'min_lowercase': 1
+        }
+    },
+    {
+        'NAME': 'django_advanced_password_validation.advanced_password_validation.ContainsSpecialCharactersValidator',
+        'OPTIONS': {
+            'min_characters': 1
+        }
+    },
 ]
 
 
@@ -173,8 +198,14 @@ REST_FRAMEWORK = {
 AUTH_USER_MODEL = 'users.User'
 
 AUTHENTICATION_BACKENDS = [
-    'django.contrib.auth.backends.ModelBackend'
+    "users.backend.PasswordlessAuthBackend",
+    "users.backend.Backend",
+    "django.contrib.auth.backends.ModelBackend",
 ]
+
+
+SENDGRID_API_KEY = config("SENDGRID_API_KEY")
+SENDGRID_DEFAULT_SENDER = config("SENDGRID_DEFAULT_SENDER")
 
 
 USE_HEROKU = config('USE_HEROKU', default=False, cast=bool)
@@ -184,3 +215,20 @@ if USE_HEROKU:
     django_heroku.settings(locals())
 
 
+USE_GOOGLE_STORAGE = config("USE_GOOGLE_STORAGE", default=False, cast=bool)
+
+if USE_GOOGLE_STORAGE:
+    import json
+
+    DEFAULT_FILE_STORAGE = "storages.backends.gcloud.GoogleCloudStorage"
+    GS_BUCKET_NAME = config("GS_BUCKET_NAME")
+    STATICFILES_STORAGE = "storages.backends.gcloud.GoogleCloudStorage"
+
+    if config("LOAD_GS_CREDENTIALS_FROM_FILE", cast=bool):
+        GS_CREDENTIALS = service_account.Credentials.from_service_account_file(
+            "GS_CREDENTIALS.json"
+        )
+    else:
+        GS_CREDENTIALS = service_account.Credentials.from_service_account_info(
+            json.loads(config("GS_CREDENTIALS"))
+        )

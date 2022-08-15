@@ -37,24 +37,15 @@ source venv/bin/activate
 
 **Install requirements**
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-vps.txt
 ```
 
-**Generate [env.sh](#) and [settings.ini](#) files** (For windows users, create the files manually):
+**Generate [settings.ini](#) files** (For windows users, create the file manually):
 ```bash
-cat env.sh.example > env.sh
-
 cat settings.ini.example > settings.ini
 ```
 
-*Open **[env.sh](#)** and **[settings.ini](#)** files, and fill in all necessary **values.***
-
-
-**Export environment variables**
-```bash
-. ./env.sh
-```
->Keep in mind that environment variables should be exported for every instance of venv started.
+*Open **[settings.ini](#)** files, and fill in all necessary **values.***
 
 <br>
 
@@ -66,6 +57,11 @@ python manage.py migrate
 **Runserver**
 ```bash
 python manage.py runserver
+```
+
+**Open project in browser**
+```bash
+http://localhost:8000/api-documentation
 ```
 
 **Running tests**
@@ -116,3 +112,21 @@ pre-commit install
 ```bash
 pre-commit run --all-files
 ``` -->
+
+
+# Run with Docker
+
+**Build project with docker compose**
+
+```bash
+docker-compose build
+```
+**Run project with docker compose**
+```bash
+docker-compose up
+```
+
+**Open project in browser**
+```bash
+0.0.0.0:8000/api-documentation
+```

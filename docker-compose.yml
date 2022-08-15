@@ -1,0 +1,72 @@
+version: '3'
+
+services:
+
+  migrations:
+    build: ./
+    volumes:
+      - ./:/app
+    command: python manage.py migrate
+    depends_on:
+      - postgres
+
+  web:
+    build: ./
+    volumes:
+      - ./:/app
+      - cachedata:/cache
+      - ./uploaded:/uploaded
+      - ./static:/static
+    ports:
+      - 8000:8000
+    command: python manage.py runserver 0.0.0.0:8000
+    depends_on:
+      - migrations
+      - redis
+
+  celery_worker:
+    build: ./
+    command: celery -A celeryconfig worker --loglevel INFO
+    volumes:
+      - ./:/app
+      - cachedata:/cache
+      - uploaded:/uploaded
+      - static:/static
+    depends_on:
+      - web
+
+  celery_beat:
+    build: ./
+    command: 'celery -A celeryconfig beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler'
+    volumes:
+      - ./:/app
+      - cachedata:/cache
+      - uploaded:/uploaded
+      - static:/static
+    depends_on:
+      - web
+
+  redis:
+    image: redis:5.0.9
+    ports:
+      - 6379:6379
+    volumes:
+      - redisdata:/data
+
+  postgres:
+    image: postgres
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=uams
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data/
+
+volumes:
+  pgdata:
+  redisdata:
+  cachedata:
+  uploaded:
+  static:
