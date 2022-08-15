@@ -128,5 +128,5 @@ docker-compose up
 
 **Open project in browser**
 ```bash
-0.0.0.0:8000/api-documentation
+http://0.0.0.0:8000/api-documentation
 ```

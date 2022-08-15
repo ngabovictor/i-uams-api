@@ -1,4 +1,4 @@
-SENDER_ID = 'FydMee'
+SENDER_ID = None
 from .utils import sms_backend
 
 

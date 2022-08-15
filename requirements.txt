@@ -28,6 +28,8 @@ django-timezone-field==5.0
 djangorestframework==3.13.1
 django_heroku
 django-countries==7.3.2
+coverage==6.4.3
+django-nose==1.4.7
 django-phonenumber-field==6.3.0
 drf-yasg==1.21.3
 filelock==3.8.0
