@@ -18,12 +18,12 @@ This project is pre-configured with postgres. Follow this documentation on how t
 
 > [Install Postgres on Linux/Windows/Mac](http://postgresguide.com/setup/install.html)
 
-After creating user(s) and database for this project, create a _**DATABASE URL**_, and add it to the **DATABASE_URL** in **env.sh** file.
+After creating user(s) and database for this project, create a _**DATABASE URL**_, and add it to the **DATABASE_URL** in **settings.ini** file.
 
 The url must be formatted as this example bellow:
 > postgres://user:password@host:port/db_name
 
-_For localhost, host is **localhost**, and default port is **5432**_
+_For localhost, host is **localhost** or **127.0.0.1**, and default port is **5432**_
 
 **Create virtualenv**
 ```bash
@@ -49,7 +49,7 @@ cat settings.ini.example > settings.ini
 
 <br>
 
-**Migrate**
+**Apply database migrations**
 ```bash
 python manage.py migrate
 ```
@@ -58,6 +58,12 @@ python manage.py migrate
 ```bash
 python manage.py runserver
 ```
+
+Or specify your own **host** and **port** as follows:
+```bash
+python manage.py runserver 0.0.0.0:8000
+```
+replace **0.0.0.0** and **8000** with your host and port respectively
 
 **Open project in browser**
 ```bash
@@ -81,6 +87,13 @@ By default, this project has a Swagger based documentation package called [drf-y
 Celery is mainly used to perform background tasks which are usually not meant to be part of the request - response cycle.
 
 > [Celery documentation](https://docs.celeryproject.org/en/latest/django/first-steps-with-django.html)
+
+**To access the documentation:**
+
+Open project in browser
+```bash
+http://localhost:8000/api-documentation
+```
 
 
 
