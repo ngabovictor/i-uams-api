@@ -50,5 +50,19 @@ jobs:
       env:
         DATABASE_URL: "postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@postgres:5432/$POSTGRES_DB"
         REDIS_URL: "redis://redis:6379"
+        DEBUG: ${{ secrets.DEBUG }}
+        ALLOWED_HOSTS: ${{ secrets.ALLOWED_HOSTS }}
+        CORS_ORIGIN_WHITELIST: ${{ secrets.CORS_ORIGIN_WHITELIST }}
+        USE_HEROKU: ${{ secrets.USE_HEROKU }}
+        USE_GOOGLE_STORAGE: ${{ secrets.USE_GOOGLE_STORAGE }}
+        GS_BUCKET_NAME: ${{ secrets.GS_BUCKET_NAME }}
+        GS_CREDENTIALS: ${{ secrets.GS_CREDENTIALS }}
+        LOAD_GS_CREDENTIALS_FROM_FILE: ${{ secrets.LOAD_GS_CREDENTIALS_FROM_FILE }}
+        AFRICASTALKING_USERNAME: ${{ secrets.AFRICASTALKING_USERNAME }}
+        AFRICASTALKING_APIKEY: ${{ secrets.AFRICASTALKING_APIKEY }}
+        AFRICASTALKING_ENVIRONMENT: ${{ secrets.AFRICASTALKING_ENVIRONMENT }}
+        SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+        SENDGRID_DEFAULT_SENDER: ${{ secrets.SENDGRID_DEFAULT_SENDER }}
+
       run: |
         python manage.py test --keepdb
