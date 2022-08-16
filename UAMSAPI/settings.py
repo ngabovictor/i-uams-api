@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/3.0/ref/settings/
 
 import os
 from decouple import config
+from google.oauth2 import service_account
 from unipath import Path
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
@@ -39,6 +40,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django_nose',
     'corsheaders',
     'drf_yasg',
     'rest_framework',
@@ -201,6 +203,15 @@ AUTHENTICATION_BACKENDS = [
     "users.backend.PasswordlessAuthBackend",
     "users.backend.Backend",
     "django.contrib.auth.backends.ModelBackend",
+]
+
+
+TEST_RUNNER = 'django_nose.NoseTestSuiteRunner'
+
+NOSE_ARGS = [
+    '--with-coverage',
+    '--cover-package=users',
+    '--verbose'
 ]
 
 

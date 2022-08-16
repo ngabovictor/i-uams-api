@@ -1,4 +1,4 @@
-from django.contrib.auth import logout
+from django.contrib.auth import logout, authenticate
 from django.contrib.auth.password_validation import validate_password, password_changed
 from django.core.exceptions import ValidationError
 from drf_yasg import openapi
@@ -24,6 +24,7 @@ class UserListViewset(GenericAPIView, ListModelMixin):
     serializer_class = UserMiniSerializer
     permission_classes = [IsAuthenticated]
     queryset = User.objects.none()
+    ordering = "-date_joined"
     filter_fields = (
         "id", "email", "phone_number", "nationality", "marital_status", "gender", "verification_status", "is_active",
         "is_staff")
@@ -62,7 +63,8 @@ class UserDetailViewset(GenericAPIView, RetrieveModelMixin, UpdateModelMixin):
 class VerificationsViewset(ViewSet):
     permission_classes = [IsAuthenticated]
 
-    @action(detail=False, methods=['post'], url_path="upload-verification-documents", name='upload-verification-documents')
+    @action(detail=False, methods=['post'], url_path="upload-verification-documents",
+            name='upload-verification-documents')
     @swagger_auto_schema(
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
@@ -99,9 +101,6 @@ class VerificationsViewset(ViewSet):
 
         if not nid_document or not nid:
             return Response({"detail": "National ID or National ID image is not provided"}, status=400)
-
-        if not request.user.is_active:
-            return Response({"detail": "The account is not active"}, status=400)
 
         if request.user.verification_status == "VERIFIED" or request.user.verification_status == "PENDING VERIFICATION":
             return Response({"detail": f"The user account status is {request.user.verification_status}"}, status=400)
@@ -160,22 +159,25 @@ class VerificationsViewset(ViewSet):
 
         user_id = request.data.get("user")
 
-        user = User.objects.filter(id=user_id, is_active=True, verification_status="PENDING VERIFICATION").first()
+        user = User.objects.filter(id=user_id, is_active=True).first()
 
         if not user:
             return Response({"detail": "Account with the id is not found"}, status=400)
 
-        status = request.data.get("verification_status")
+        if user.verification_status != "PENDING VERIFICATION":
+            return Response({"detail": f"User with {user.verification_status} cannot be verified"}, status=400)
 
-        if not status:
+        verification_status = request.data.get("verification_status")
+
+        if not verification_status:
             return Response({"detail": "Verification status is not provided"}, status=400)
 
         accepted_statues = ("NOT VERIFIED", "VERIFIED")
 
-        if status not in accepted_statues:
+        if verification_status not in accepted_statues:
             return Response({"detail": "Invalid status is provided"}, status=400)
 
-        user.verification_status = status
+        user.verification_status = verification_status
         user.save()
 
         """
@@ -183,11 +185,85 @@ class VerificationsViewset(ViewSet):
         """
         if user.email:
             subject = "Account verification status"
-            message = f"<p>Your account verification status has been changed to {status}</p>"
+            message = f"<p>Your account verification status has been changed to {verification_status}</p>"
             emails = [user.email]
             send_email_task.delay(emails=emails, subject=subject, message=message)
 
         return Response({"detail": "Account has been verified"}, status=200)
+
+    @action(detail=False, methods=['post'], url_path="verify-email", name='verify-email')
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'code': openapi.Schema(type=openapi.TYPE_STRING, description='Verification code'),
+            },
+            required=['code']
+        ),
+        responses={
+            status.HTTP_200_OK: openapi.Response(
+                description="Verification code has been verified",
+                examples={
+                    "application/json": {
+                        "id": "string",
+                        "first_name": "string",
+                        "last_name": "string",
+                        "phone_number": "string",
+                        "email": "string",
+                        "is_email_verified": "boolean",
+                        "nationality": "string",
+                        "is_active": "boolean",
+                        "is_staff": "boolean",
+                        "birthdate": "string",
+                        "marital_status": "string",
+                        "gender": "string",
+                        "verification_status": "string",
+                        "profile_photo": "boolean",
+                        "age": "number"
+                    }
+                }
+            ),
+            status.HTTP_400_BAD_REQUEST: openapi.Response(
+                description="Account/verification code exception",
+                examples={
+                    "application/json": {
+                        "detail": "No account found | The account is not active | This account must reset password "
+                                  "before login | Invalid verification code"
+                    },
+                }
+            ),
+        })
+    def verify_email(self, request):
+
+        """
+        Verify email address
+        """
+
+        code = request.data.get("code")
+
+        verification = Verification.objects.filter(code=code, is_valid=True, is_used=False, user=request.user,
+                                                   channel="EMAIL").first()
+
+        if not verification:
+            return Response({"detail": "Invalid verification code"}, status=400)
+
+        if request.user.is_email_verified:
+            return Response({"detail": "Email is already verified"}, status=400)
+
+        user = request.user
+        user.is_email_verified = True
+        user.save()
+
+        context = {
+            "request": request
+        }
+
+        data = UserMiniSerializer(user, context=context).data
+
+        verification.is_valid = False
+        verification.is_used = True
+        verification.save()
+        return Response(data, status=200)
 
 
 class AuthenticationViewset(ViewSet):
@@ -269,17 +345,21 @@ class AuthenticationViewset(ViewSet):
             is_used=False
         )
 
-        schedule_expiration.delay(verification_code=verification.code)
-
         message = "{code} is your UAMS verification code. It expires in 5 minutes.".format(code=verification.code)
 
         if is_username_phone_number(username):
+            verification.channel = "PHONE_NUMBER"
+            verification.save()
             send_sms_task.delay(phone_numbers=[username], message=message)
         if is_username_email(username):
+            verification.channel = "EMAIL"
+            verification.save()
             subject = "UAMS Authentication"
             email_message = "<p><b>{code}</b> is your UAMS verification code. It expires in 5 minutes.</p>".format(
                 code=verification.code)
             send_email_task.delay(emails=[username], subject=subject, message=email_message)
+
+        schedule_expiration.delay(verification_code=verification.code)
 
         return Response(
             {"detail": "Verification code has been sent to {username}.".format(username=username)},
@@ -300,7 +380,22 @@ class AuthenticationViewset(ViewSet):
                 description="Verification code has been verified",
                 examples={
                     "application/json": {
-                        "detail": "Verification is approved. Please continue login"
+                        "id": "string",
+                        "first_name": "string",
+                        "last_name": "string",
+                        "phone_number": "string",
+                        "email": "string",
+                        "is_email_verified": "boolean",
+                        "nationality": "string",
+                        "is_active": "boolean",
+                        "is_staff": "boolean",
+                        "birthdate": "string",
+                        "marital_status": "string",
+                        "gender": "string",
+                        "verification_status": "string",
+                        "profile_photo": "boolean",
+                        "age": "number",
+                        "token": "string"
                     }
                 }
             ),
@@ -317,16 +412,12 @@ class AuthenticationViewset(ViewSet):
     def verify_authentication(self, request):
 
         """
-        Login with username and OTP code
+        Login with username, password and OTP code
         """
 
         code = request.data.get("code")
         username = request.data.get("username")
-
-        if not username:
-            username = request.data.get("phone_number")
-        if not username:
-            username = request.data.get("email")
+        password = request.data.get("password")
 
         filter_params = {}
 
@@ -349,6 +440,11 @@ class AuthenticationViewset(ViewSet):
             return Response({"detail": "No account found"}, status=400)
         if not user.is_active:
             return Response({"detail": "The account is not active"}, status=400)
+
+        user = authenticate(username=username, password=password, request=request)
+
+        if not user:
+            return Response({"detail": "Invalid credentials"}, status=400)
 
         verification = Verification.objects.filter(code=code, is_valid=True, is_used=False, user=user).first()
 
@@ -448,22 +544,19 @@ class AuthenticationViewset(ViewSet):
         try:
             validate_password(password=password, user=user)
         except ValidationError as e:
-            return Response({"detail": str(e)}, status)
+            return Response({"detail": str(e)}, status=400)
 
-        context = {
-            "request": request
-        }
         user.set_password(password)
         user.save()
-
-        password_changed(password, user)
-
-        data = UserMiniSerializer(user, context=context).data
 
         verification.is_valid = False
         verification.is_used = True
         verification.save()
-        return Response(data, status=200)
+
+        password_changed(password, user)
+        Token.objects.filter(user=user).delete()
+
+        return Response({"detail": "Password has been changed successfully"}, status=200)
 
     @action(detail=False, methods=['post'], url_path="generate-magic-link", name='generate-magic-link')
     @swagger_auto_schema(
@@ -500,7 +593,7 @@ class AuthenticationViewset(ViewSet):
 
         email = request.data.get("email")
 
-        if not email or is_username_email(email):
+        if not email or not is_username_email(email):
             return Response({"detail": "Invalid email address"}, status=400)
 
         user = User.objects.filter(email=email).first()
@@ -543,7 +636,21 @@ class AuthenticationViewset(ViewSet):
                 description="Login is successful",
                 examples={
                     "application/json": {
-                        "detail": "Login is successful"
+                        "id": "string",
+                        "first_name": "string",
+                        "last_name": "string",
+                        "phone_number": "string",
+                        "email": "string",
+                        "is_email_verified": "boolean",
+                        "nationality": "string",
+                        "is_active": "boolean",
+                        "is_staff": "boolean",
+                        "birthdate": "string",
+                        "marital_status": "string",
+                        "gender": "string",
+                        "verification_status": "string",
+                        "profile_photo": "boolean",
+                        "age": "number"
                     }
                 }
             ),
@@ -580,6 +687,11 @@ class AuthenticationViewset(ViewSet):
         }
         data = UserMiniSerializer(instance=user, context=context).data
         data['token'] = token.key
+
+        verification.is_valid = False
+        verification.is_used = True
+        verification.save()
+
         return Response(data, status=200)
 
     @action(detail=False, methods=['get'], url_path="logout", name='logout')
