@@ -17,3 +17,4 @@ __pycache__
 
 env.sh
 settings.ini
+.coverage

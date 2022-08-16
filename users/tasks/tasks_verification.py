@@ -13,10 +13,10 @@ def schedule_expiration(verification_code):
     :param str verification_code: code identifying verification instance
     :return: None
     """
-    kwargs = "{" + "\"id\":" + "\"{}\"".format(verification_code) + "}"
+    kwargs = "{" + "\"code\":" + "\"{}\"".format(verification_code) + "}"
 
     get_kwargs = {
-        "id": verification_code
+        "code": verification_code
     }
 
     verification = get_object_or_none(Verification, get_kwargs)
@@ -42,8 +42,12 @@ def schedule_expiration(verification_code):
 @app.task
 def invalidate_verification(*args, **kwargs):
     code = kwargs.get('id')
-    verification = Verification.objects.filter(id=code).first()
+    Verification.objects.filter(id=code).delete()
+
+    """
 
     if verification:
         verification.is_valid = False
         verification.save()
+        
+    """
