@@ -48,8 +48,8 @@ jobs:
         pip install -r requirements-vps.txt
     - name: Run Tests
       env:
-        DATABASE_URL: "postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@postgres:5432/$POSTGRES_DB"
-        REDIS_URL: "redis://redis:6379"
+        DATABASE_URL: "postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@127.0.0.1:5432/$POSTGRES_DB"
+        REDIS_URL: "redis://127.0.0.1:6379"
         DEBUG: ${{ secrets.DEBUG }}
         ALLOWED_HOSTS: ${{ secrets.ALLOWED_HOSTS }}
         CORS_ORIGIN_WHITELIST: ${{ secrets.CORS_ORIGIN_WHITELIST }}
