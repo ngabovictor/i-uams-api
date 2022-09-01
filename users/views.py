@@ -1,6 +1,7 @@
 from django.contrib.auth import logout, authenticate
 from django.contrib.auth.password_validation import validate_password, password_changed
 from django.core.exceptions import ValidationError
+from django.views.decorators.debug import sensitive_post_parameters
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
@@ -172,7 +173,7 @@ class VerificationsViewset(ViewSet):
         if not verification_status:
             return Response({"detail": "Verification status is not provided"}, status=400)
 
-        accepted_statues = ("NOT VERIFIED", "VERIFIED")
+        accepted_statues = ("UNVERIFIED", "VERIFIED")
 
         if verification_status not in accepted_statues:
             return Response({"detail": "Invalid status is provided"}, status=400)
@@ -365,7 +366,7 @@ class AuthenticationViewset(ViewSet):
             {"detail": "Verification code has been sent to {username}.".format(username=username)},
             status=200)
 
-    @action(detail=False, methods=['post'], url_path="verify-authentication", name='verify-authentication')
+    @action(detail=False, methods=['post'], url_path="verify-otp", name='verify-otp')
     @swagger_auto_schema(
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
@@ -409,12 +410,96 @@ class AuthenticationViewset(ViewSet):
                 }
             ),
         })
-    def verify_authentication(self, request):
+    def verify_otp(self, request):
 
         """
         Login with username, password and OTP code
         """
+        code = request.data.get("code")
+        username = request.data.get("username")
 
+        filter_params = {}
+
+        if is_username_phone_number(username=username):
+            filter_params = {
+                "phone_number": username
+            }
+
+        elif is_username_email(username=username):
+            filter_params = {
+                "email": username
+            }
+
+        if not bool(filter_params):
+            return Response({"detail": "Valid email or phone number is not supplied"}, status=400)
+
+        user = User.objects.filter(**filter_params).first()
+
+        if not user:
+            return Response({"detail": "No account found"}, status=400)
+        if not user.is_active:
+            return Response({"detail": "The account is not active"}, status=400)
+
+        verification = Verification.objects.filter(code=code, is_valid=True, is_used=False, user=user).first()
+
+        if not verification:
+            return Response({"detail": "Invalid verification code"}, status=400)
+
+        verification.is_used = True
+        verification.save()
+
+        return Response({"detail": "OTP verified"}, status=200)
+
+    @action(detail=False, methods=['post'], url_path="authenticate", name='authenticate')
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'username': openapi.Schema(type=openapi.TYPE_STRING, description='Email or phone number'),
+                'code': openapi.Schema(type=openapi.TYPE_STRING, description='Verification code'),
+                'password': openapi.Schema(type=openapi.TYPE_STRING, description='Password'),
+            },
+            required=['username', 'code', 'password']
+        ),
+        responses={
+            status.HTTP_200_OK: openapi.Response(
+                description="Verification code has been verified",
+                examples={
+                    "application/json": {
+                        "id": "string",
+                        "first_name": "string",
+                        "last_name": "string",
+                        "phone_number": "string",
+                        "email": "string",
+                        "is_email_verified": "boolean",
+                        "nationality": "string",
+                        "is_active": "boolean",
+                        "is_staff": "boolean",
+                        "birthdate": "string",
+                        "marital_status": "string",
+                        "gender": "string",
+                        "verification_status": "string",
+                        "profile_photo": "boolean",
+                        "age": "number",
+                        "token": "string"
+                    }
+                }
+            ),
+            status.HTTP_400_BAD_REQUEST: openapi.Response(
+                description="Account/verification code exception",
+                examples={
+                    "application/json": {
+                        "detail": "No account found | The account is not active | This account must reset password "
+                                  "before login | Invalid verification code"
+                    },
+                }
+            ),
+        })
+    def perform__authentication(self, request):
+
+        """
+        Login with username, password and OTP code
+        """
         code = request.data.get("code")
         username = request.data.get("username")
         password = request.data.get("password")
@@ -446,7 +531,7 @@ class AuthenticationViewset(ViewSet):
         if not user:
             return Response({"detail": "Invalid credentials"}, status=400)
 
-        verification = Verification.objects.filter(code=code, is_valid=True, is_used=False, user=user).first()
+        verification = Verification.objects.filter(code=code, is_valid=True, is_used=True, user=user).first()
 
         if not verification:
             return Response({"detail": "Invalid verification code"}, status=400)
@@ -619,7 +704,7 @@ class AuthenticationViewset(ViewSet):
         
         """
 
-        link = f"http://localhost:8000/auth/login-with-magic-link?login_id={verification.id}"
+        link = f"http://localhost:4200/login-with-link/{verification.id}"
 
         subject = "UAMS Authentication"
         message = f"<p>Please click this link to login: <a href=\"{link}\">{link}</a></p>"

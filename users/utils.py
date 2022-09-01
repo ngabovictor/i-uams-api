@@ -1,6 +1,4 @@
-from django.core.exceptions import ObjectDoesNotExist
-import random
-import string
+import string, random
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -11,6 +9,12 @@ from django.contrib.auth.password_validation import (
     NumericPasswordValidator,
 )
 
+import re
+
+# Make a regular expression
+# for validating an Email
+regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+
 
 def is_username_email(username):
     """
@@ -18,10 +22,9 @@ def is_username_email(username):
     :param str username: Username to check if it's an email address
     :return: bool
     """
-    if not username:
-        return False
-
-    return "@" and "." in username
+    if re.fullmatch(regex, username):
+        return True
+    return False
 
 
 def is_username_phone_number(username):
