@@ -617,7 +617,7 @@ class AuthenticationViewset(ViewSet):
         if not password:
             return Response({"detail": "Password not provided"}, status=400)
 
-        verification = Verification.objects.filter(code=code, is_valid=True, is_used=False, user=user).first()
+        verification = Verification.objects.filter(code=code, is_valid=True, is_used=True, user=user).first()
 
         if not verification:
             return Response({"detail": "Invalid verification code"}, status=400)
@@ -642,6 +642,48 @@ class AuthenticationViewset(ViewSet):
         Token.objects.filter(user=user).delete()
 
         return Response({"detail": "Password has been changed successfully"}, status=200)
+
+    @action(detail=False, methods=['post'], url_path="change-password", name='change-password')
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'password': openapi.Schema(type=openapi.TYPE_STRING, description='Password'),
+                'new_password': openapi.Schema(type=openapi.TYPE_STRING, description='Password'),
+            },
+            required=['password', 'new_password']
+        ),
+        responses={
+            status.HTTP_200_OK: openapi.Response(
+                description="Verification code has been verified",
+                examples={
+                    "application/json": {
+                        "detail": "Password is changed"
+                    }
+                }
+            ),
+            status.HTTP_400_BAD_REQUEST: openapi.Response(
+                description="Account/verification code exception",
+                examples={
+                    "application/json": {
+                        "detail": "Password failed to be validated"
+                    },
+                }
+            ),
+        })
+    def change_password(self, request):
+        password = request.data.get("password")
+        new_password = request.data.get("new_password")
+
+        try:
+            validate_password(password=password, user=request.user)
+        except ValidationError as e:
+            return Response({"detail": str(e)}, status=400)
+
+        request.user.set_password(new_password)
+        request.user.save()
+
+        return Response({"detail": "Password is changed"}, status=200)
 
     @action(detail=False, methods=['post'], url_path="generate-magic-link", name='generate-magic-link')
     @swagger_auto_schema(
